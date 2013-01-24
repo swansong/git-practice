@@ -1,14 +1,9 @@
-import pdb
+def monkey():
+    return "i'm a monkey lololololol"
 
-def monkey:
-    print("i'm a monkey lololololol")
-    return
 
-def not_a_monkey:
- 
-    #oops there shouldn't be space there
+def not_a_monkey():
+
     x = 1 * 3 + 9 - 8
     x = x + 34
-    pdb.set_trace()
-
-
+    return x

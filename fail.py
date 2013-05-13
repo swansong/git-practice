@@ -1,5 +1,6 @@
 def monkey():
     tester = "I'm a monkey lolololol!"
+    print(tester)
     return tester
 
 

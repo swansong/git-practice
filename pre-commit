@@ -1,0 +1,122 @@
+#!/usr/bin/env python
+ 
+import os
+import re
+import subprocess
+import sys
+import shutil
+import tempfile
+ 
+modified = re.compile('^(?:M|A)(\s+)(?P<name>.*)')
+ 
+CHECKS = [
+    {
+        'output': 'Checking for pdbs and ipdbs...',
+        'command': 'grep -n "pdb.set_trace" %s',
+        'match_files': ['.*\.py$'],
+        'ignore_files': ['.*pre-commit'],
+        'print_filename': True,
+    },
+    {
+        'output': 'Checking for print statements...',
+        'command': 'grep -n print %s',
+        'match_files': ['.*\.py$'],
+        'ignore_files': ['.*migrations.*', '.*management/commands.*', '.*manage.py', '.*/scripts/.*'],
+        'print_filename': True,
+    },
+    {
+        'output': 'Checking for console.log()...',
+        'command': 'grep -n console.log %s',
+        'match_files': ['.*\.js$'],
+        'print_filename': True,
+    },
+    {
+        'output': 'Checking for debugger...',
+        'command': 'grep -n debugger %s',
+        'match_files': ['.*\.js$'],
+        'print_filename': True,
+    },
+    {
+       'output': 'Running Jshint...',
+       # By default, jshint prints 'Lint Free!' upon success. We want to filter this out.
+       'command': 'jshint %s | grep -v "Lint Free!"',
+       'match_files': ['.*\.js$'],
+       'print_filename': False,
+    },
+#    {
+#        'output': 'Running Pyflakes...',
+#        'command': 'pyflakes %s',
+#        'match_files': ['.*\.py$'],
+#        'ignore_files': ['.*settings/.*', '.*manage.py', '.*migrations.*'],
+#        'print_filename': False,
+#    },
+    {
+        'output': 'Running pep8...',
+        'command': 'pep8 -r --ignore=E501 %s',
+        'match_files': ['.*\.py$'],
+        'ignore_files': ['.*migrations.*'],
+        'print_filename': False,
+    },
+]
+ 
+ 
+def matches_file(file_name, match_files):
+    return any(re.compile(match_file).match(file_name) for match_file in match_files)
+ 
+ 
+def check_files(files, check, tempdir):
+    result = 0
+    print check['output']
+    for file_name in files:
+        if not 'match_files' in check or matches_file(file_name, check['match_files']):
+            if not 'ignore_files' in check or not matches_file(file_name, check['ignore_files']):
+                process = subprocess.Popen(check['command'] % file_name, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+                out, err = process.communicate()
+                if out or err:
+                    if check['print_filename']:
+                        prefix = '\t%s:' % file_name.replace(tempdir, '')
+                    else:
+                        prefix = '\t'
+                    output_lines = ['%s%s' % (prefix, line.replace(tempdir, '')) for line in out.splitlines()]
+                    print '\n'.join(output_lines)
+                    if err:
+                        print err
+                    result = 1
+    return result
+ 
+ 
+def main():
+    p = subprocess.Popen(['git', 'diff', '--name-only', '--cached'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    out, err = p.communicate()
+    staged_files = out.split('\n')
+    result = 0
+    
+    tempdir = tempfile.mkdtemp()
+    for staged_file in staged_files:
+        if staged_file is not '':
+            filename = os.path.join(tempdir, staged_file)
+            filepath = os.path.dirname(filename)
+            if not os.path.exists(filepath):
+                os.makedirs(filepath)
+            with file(filename, 'w') as f:
+                subprocess.call(['git', 'show', ':' + staged_file], stdout=f)
+
+    files = []
+    for path, subdirectories, filenames in os.walk(tempdir):
+        for name in filenames:
+            files.append(os.path.join(path, name))
+
+    for check in CHECKS:
+        result = check_files(files, check, tempdir + '/') or result
+
+    shutil.rmtree(tempdir)
+
+#    print 'Running Unit Tests...'
+#    return_code = subprocess.call('./manage.py test', shell=True)
+#    result = return_code or result
+    
+    sys.exit(result)
+ 
+ 
+if __name__ == '__main__':
+    main()
